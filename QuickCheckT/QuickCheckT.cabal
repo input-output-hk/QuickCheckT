@@ -1,24 +1,46 @@
-cabal-version: 3.0
-name:          QuickCheck-GenT
-version:       0.2.2.2
-synopsis:      A GenT monad transformer for QuickCheck library.
+cabal-version:      2.4
+name:               QuickCheckT
+version:            0.1.0.0
+synopsis:           A GenT monad transformer for QuickCheck library.
 description:
-license:       MIT
-license-file:  LICENSE
-homepage:      https://github.com/nikita-volkov/QuickCheck-GenT
-bug-reports:   https://github.com/nikita-volkov/QuickCheck-GenT/issues
-author:        Nikita Volkov <nikita.y.volkov@mail.ru>
-maintainer:    Nikita Volkov <nikita.y.volkov@mail.ru>
-copyright:     (c) 2013, Nikita Volkov
-category:      Testing
+  A fork of QuickCheck-GenT (https://github.com/nikita-volkov/QuickCheck-GenT),
+  re-homed under input-output-hk with IOG project conventions.
+  Provides a GenT monad transformer that wraps QuickCheck's Gen
+  and allows lifting arbitrary monadic effects into generator computations.
+
+license:            MIT
+license-file:       LICENSE
+author:             IOHK
+maintainer:         operations@iohk.io
+copyright:          (c) 2013, Nikita Volkov; (c) 2024, IOHK
+homepage:           https://github.com/input-output-hk/QuickCheckT
+bug-reports:        https://github.com/input-output-hk/QuickCheckT/issues
+category:           Testing
+build-type:         Simple
+extra-doc-files:    CHANGELOG.md
+extra-source-files: README.md
+
+tested-with:
+  ghc ==8.2.2
+  ghc ==8.4.4
+  ghc ==8.6.5
+  ghc ==8.8.4
+  ghc ==8.10.7
+  ghc ==9.0.2
+  ghc ==9.2.8
+  ghc ==9.4.8
+  ghc ==9.6.6
+  ghc ==9.8.2
+  ghc ==9.10.3
 
 source-repository head
   type:     git
-  location: git://github.com/nikita-volkov/QuickCheck-GenT.git
+  location: https://github.com/input-output-hk/QuickCheckT
 
 library
-  hs-source-dirs:     src
-  default-language:   Haskell2010
+  hs-source-dirs:   src
+  default-language: Haskell2010
+
   default-extensions:
     NoImplicitPrelude
     NoMonomorphismRestriction
@@ -50,11 +72,19 @@ library
     TypeFamilies
     TypeOperators
 
-  exposed-modules:    QuickCheck.GenT
-  other-modules:      QuickCheck.GenT.Prelude
+  ghc-options:
+    -Wall
+    -Wcompat
+    -Wincomplete-record-updates
+    -Wincomplete-uni-patterns
+    -Wredundant-constraints
+
+  exposed-modules:  Test.QuickCheck.GenT
+  other-modules:    Test.QuickCheck.GenT.Prelude
+
   build-depends:
-    , base >=4.13 && <5
-    , mmorph >=1.1 && <2
-    , QuickCheck >=2.7 && <3
-    , random >=1.2 && <2
+    , base        >=4.9  && <5
+    , mmorph      >=1.1  && <2
+    , QuickCheck  >=2.7  && <3
+    , random      >=1.2  && <2
     , transformers >=0.5 && <2

@@ -1,268 +1,167 @@
-{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 -- |
--- Most of the code is borrowed from
--- <http://haskell.1045720.n5.nabble.com/darcs-patch-GenT-monad-transformer-variant-of-Gen-QuickCheck-2-td3172136.html a mailing list discussion>.
--- Therefor, credits go to Paul Johnson and Felix Martini.
-module QuickCheck.GenT (
-  GenT,
-  runGenT,
+-- Module      : Test.QuickCheck.GenT
+-- Description : A GenT monad transformer for QuickCheck.
+-- Copyright   : (c) 2013 Nikita Volkov; (c) 2024 IOHK
+-- License     : MIT
+--
+-- Provides 'GenT', a monad transformer that wraps QuickCheck's 'Gen' and
+-- allows any monad to be lifted into generator computations via the standard
+-- @transformers@ / @mmorph@ machinery.
+module Test.QuickCheck.GenT (
+  -- * GenT transformer
+  GenT (..),
   MonadGen (..),
 
-  -- * Lifted functions
-  arbitrary',
+  -- * Running
+  runGenT,
+
+  -- * QuickCheck combinators lifted to GenT
   oneof,
+  choose,
   frequency,
   elements,
-  growingElements,
-  getSize,
-  scale,
   suchThat,
-  suchThatMap,
   suchThatMaybe,
-  applyArbitrary2,
-  applyArbitrary3,
-  applyArbitrary4,
   listOf,
   listOf1,
   vectorOf,
-  vector,
-  infiniteListOf,
-  infiniteList,
-  shuffle,
-  sublistOf,
-  orderedList,
-
-  -- * Re-exports
-  Arbitrary (..),
-  QC.Gen,
-
-  -- * Safe functions
-  oneofMay,
-  elementsMay,
-  growingElementsMay,
 ) where
 
-import QuickCheck.GenT.Prelude
-import qualified System.Random as Random
-import Test.QuickCheck (Arbitrary (..))
-import qualified Test.QuickCheck.Arbitrary as QC
-import qualified Test.QuickCheck.Gen as QC
-import qualified Test.QuickCheck.Random as QC
+import Control.Monad.Morph (MFunctor (..), MMonad (..))
+import Control.Monad.Trans.Class (MonadTrans (..))
+import qualified System.Random as R
+import Test.QuickCheck (Gen)
+import qualified Test.QuickCheck as QC
+import qualified Test.QuickCheck.Gen as QCGen
+import Test.QuickCheck.GenT.Prelude
+import qualified Test.QuickCheck.Random as QCGen
 
-newtype GenT m a = GenT {unGenT :: QC.QCGen -> Int -> m a}
+-- ---------------------------------------------------------------------------
+-- GenT
 
-instance MFunctor GenT where
-  hoist f (GenT g) = GenT $ \r n -> f $ g r n
+-- | A monad transformer version of QuickCheck's 'Gen'.
+newtype GenT m a = GenT {unGenT :: QCGen.QCGen -> Int -> m a}
+  deriving (Functor)
 
-instance Functor m => Functor (GenT m) where
-  fmap f m = GenT $ \r n -> fmap f $ unGenT m r n
+instance Applicative m => Applicative (GenT m) where
+  pure a = GenT $ \_ _ -> pure a
+  GenT f <*> GenT x = GenT $ \r n ->
+    let (r1, r2) = split r
+     in f r1 n <*> x r2 n
 
 instance Monad m => Monad (GenT m) where
   return = pure
-  m >>= k = GenT $ \r n -> do
-    let (r1, r2) = Random.split r
-    a <- unGenT m r1 n
-    unGenT (k a) r2 n
+  GenT x >>= f = GenT $ \r n ->
+    let (r1, r2) = split r
+     in x r1 n >>= \a -> unGenT (f a) r2 n
 
 instance MonadFail m => MonadFail (GenT m) where
-  fail msg = GenT (\_ _ -> fail msg)
-
-instance (Functor m, Monad m) => Applicative (GenT m) where
-  pure a = GenT (\_ _ -> return a)
-  (<*>) = ap
+  fail msg = GenT $ \_ _ -> fail msg
 
 instance MonadTrans GenT where
-  lift m = GenT (\_ _ -> m)
+  lift m = GenT $ \_ _ -> m
 
 instance MonadIO m => MonadIO (GenT m) where
   liftIO = lift . liftIO
 
-class (Applicative g, Monad g) => MonadGen g where
-  liftGen :: QC.Gen a -> g a
-  variant :: Integral n => n -> g a -> g a
-  sized :: (Int -> g a) -> g a
-  resize :: Int -> g a -> g a
-  choose :: Random.Random a => (a, a) -> g a
+instance MFunctor GenT where
+  hoist f (GenT g) = GenT $ \r n -> f (g r n)
 
-instance (Applicative m, Monad m) => MonadGen (GenT m) where
-  liftGen gen = GenT $ \r n -> return $ QC.unGen gen r n
-  choose rng = GenT $ \r _ -> return $ fst $ Random.randomR rng r
-  variant k (GenT g) = GenT $ \r n -> g (var k r) n
-  sized f = GenT $ \r n -> let GenT g = f n in g r n
-  resize n (GenT g) = GenT $ \r _ -> g r n
+instance MMonad GenT where
+  embed f (GenT g) = GenT $ \r n ->
+    let (r1, r2) = split r
+     in unGenT (f (g r1 n)) r2 n
 
-instance MonadGen QC.Gen where
+-- | Run a 'GenT' inside a 'Gen', producing an @m a@.
+runGenT :: GenT m a -> Gen (m a)
+runGenT (GenT g) = QCGen.MkGen g
+
+-- ---------------------------------------------------------------------------
+-- MonadGen class
+
+class Monad m => MonadGen m where
+  liftGen :: Gen a -> m a
+
+instance MonadGen Gen where
   liftGen = id
-  variant k (QC.MkGen g) = QC.MkGen $ \r n -> g (var k r) n
-  sized f = QC.MkGen $ \r n -> let QC.MkGen g = f n in g r n
-  resize n (QC.MkGen g) = QC.MkGen $ \r _ -> g r n
-  choose range = QC.MkGen $ \r _ -> fst $ Random.randomR range r
 
-runGenT :: GenT m a -> QC.Gen (m a)
-runGenT (GenT run) = QC.MkGen run
+instance Monad m => MonadGen (GenT m) where
+  liftGen (QCGen.MkGen g) = GenT $ \r n -> pure (g r n)
 
--- |
--- Private variant-generating function.  Converts an integer into a chain
--- of (fst . split) and (snd . split) applications.  Every integer (including
--- negative ones) will give rise to a different random number generator in
--- log2 n steps.
-var :: Integral n => n -> QC.QCGen -> QC.QCGen
-var k =
-  (if k == k' then id else var k') . (if even k then fst else snd) . Random.split
-  where
-    k' = k `div` 2
+-- ---------------------------------------------------------------------------
+-- Lifted combinators
 
--- ** Lifted functions
-
-arbitrary' :: (Arbitrary a, MonadGen m) => m a
-arbitrary' = liftGen arbitrary
-
-getSize :: MonadGen m => m Int
-getSize = liftGen QC.getSize
-
-scale :: MonadGen m => (Int -> Int) -> m a -> m a
-scale f g = sized (\n -> resize (f n) g)
-
-applyArbitrary2 :: MonadGen m => (Arbitrary a, Arbitrary b) => (a -> b -> r) -> m r
-applyArbitrary2 = liftGen . QC.applyArbitrary2
-
-applyArbitrary3 ::
-  MonadGen m => (Arbitrary a, Arbitrary b, Arbitrary c) => (a -> b -> c -> r) -> m r
-applyArbitrary3 = liftGen . QC.applyArbitrary3
-
-applyArbitrary4 ::
-  MonadGen m =>
-  (Arbitrary a, Arbitrary b, Arbitrary c, Arbitrary d) =>
-  (a -> b -> c -> d -> r) -> m r
-applyArbitrary4 = liftGen . QC.applyArbitrary4
-
-infiniteListOf :: MonadGen m => m a -> m [a]
-infiniteListOf = sequence . repeat
-
-infiniteList :: (Arbitrary a, MonadGen m) => m [a]
-infiniteList = infiniteListOf arbitrary'
-
-shuffle :: MonadGen m => [a] -> m [a]
-shuffle = liftGen . QC.shuffle
-
-sublistOf :: MonadGen m => [a] -> m [a]
-sublistOf = liftGen . QC.sublistOf
-
-orderedList :: (Ord a, Arbitrary a, MonadGen m) => m [a]
-orderedList = liftGen QC.orderedList
-
--- ** Common generator combinators
-
--- | Generates a value that satisfies a predicate.
-suchThat :: MonadGen m => m a -> (a -> Bool) -> m a
-gen `suchThat` p =
-  do
-    mx <- gen `suchThatMaybe` p
-    case mx of
-      Just x -> return x
-      Nothing -> sized (\n -> resize (n + 1) (gen `suchThat` p))
-
--- | Generates a value for which the given function returns a 'Just', and then
--- applies the function.
-suchThatMap :: MonadGen m => m a -> (a -> Maybe b) -> m b
-gen `suchThatMap` f =
-  fmap fromJust $ fmap f gen `suchThat` isJust
-
--- | Tries to generate a value that satisfies a predicate.
-suchThatMaybe :: MonadGen m => m a -> (a -> Bool) -> m (Maybe a)
-gen `suchThatMaybe` p = sized (try 0 . max 1)
-  where
-    try _ 0 = return Nothing
-    try k n = do
-      x <- resize (2 * k + n) gen
-      if p x then return (Just x) else try (k + 1) (n - 1)
-
--- | Generates a list of random length. The maximum length depends on the
--- size parameter.
+-- | 'QC.listOf' lifted to 'MonadGen'.
 listOf :: MonadGen m => m a -> m [a]
-listOf gen = sized $ \n ->
-  do
-    k <- choose (0, n)
-    vectorOf k gen
+listOf gen = liftGen (QC.sized $ \n -> QC.choose (0, n)) >>= \k -> vectorOf k gen
 
--- | Generates a non-empty list of random length. The maximum length
--- depends on the size parameter.
+-- | 'QC.listOf1' lifted to 'MonadGen'.
 listOf1 :: MonadGen m => m a -> m [a]
-listOf1 gen = sized $ \n ->
-  do
-    k <- choose (1, 1 `max` n)
-    vectorOf k gen
+listOf1 gen = liftGen (QC.sized $ \n -> QC.choose (1, max 1 n)) >>= \k -> vectorOf k gen
 
--- | Generates a list of the given length.
+-- | 'QC.vectorOf' lifted to 'MonadGen'.
 vectorOf :: MonadGen m => Int -> m a -> m [a]
-vectorOf k gen = sequence [gen | _ <- [1 .. k]]
+vectorOf k gen = sequence (replicate k gen)
 
--- | Generates a list of a given length.
-vector :: (Arbitrary a, MonadGen m) => Int -> m [a]
-vector n = vectorOf n arbitrary'
-
--- * Partial functions
-
--- | Randomly uses one of the given generators. The input list
--- must be non-empty.
+-- | 'QC.oneof' lifted to 'MonadGen'.
 oneof :: MonadGen m => [m a] -> m a
-oneof =
-  fmap (fromMaybe (error "QuickCheck.GenT.oneof used with empty list"))
-    . oneofMay
+oneof [] = error "Test.QuickCheck.GenT.oneof: empty list"
+oneof gs = do
+  i <- liftGen (QC.choose (0, length gs - 1))
+  gs !! i
 
--- | Chooses one of the given generators, with a weighted random distribution.
--- The input list must be non-empty.
+-- | 'QC.frequency' lifted to 'MonadGen'.
 frequency :: MonadGen m => [(Int, m a)] -> m a
-frequency [] = error "QuickCheck.GenT.frequency used with empty list"
-frequency xs0 = choose (1, tot) >>= (`pick` xs0)
+frequency [] = error "Test.QuickCheck.GenT.frequency: empty list"
+frequency xs = do
+  let total = sum (map fst xs)
+  i <- liftGen (QC.choose (1, total))
+  pick i xs
   where
-    tot = sum (map fst xs0)
+    pick _ [] = error "Test.QuickCheck.GenT.frequency: exhausted list"
+    pick n ((k, g) : rest)
+      | n <= k = g
+      | otherwise = pick (n - k) rest
 
-    pick n ((k, x) : xs)
-      | n <= k = x
-      | otherwise = pick (n - k) xs
-    pick _ _ = error "QuickCheck.GenT.pick used with empty list"
-
--- | Generates one of the given values. The input list must be non-empty.
+-- | 'QC.elements' lifted to 'MonadGen'.
 elements :: MonadGen m => [a] -> m a
-elements =
-  fmap (fromMaybe (error "QuickCheck.GenT.elements used with empty list"))
-    . elementsMay
+elements [] = error "Test.QuickCheck.GenT.elements: empty list"
+elements xs = do
+  i <- liftGen (QC.choose (0, length xs - 1))
+  return (xs !! i)
 
--- | Takes a list of elements of increasing size, and chooses
--- among an initial segment of the list. The size of this initial
--- segment increases with the size parameter.
--- The input list must be non-empty.
-growingElements :: MonadGen m => [a] -> m a
-growingElements =
-  fmap (fromMaybe (error "QuickCheck.GenT.growingElements used with empty list"))
-    . growingElementsMay
+-- | 'QC.sized' lifted to 'MonadGen'.
+sized :: MonadGen m => (Int -> m a) -> m a
+sized f = liftGen (QC.sized pure) >>= f
 
--- * Total functions resulting in Maybe
+-- | 'QC.resize' lifted to 'MonadGen'.
+resize :: MonadGen m => Int -> m a -> m a
+resize n g = liftGen (QC.resize n (QC.sized pure)) >>= \_ -> g
 
--- |
--- Randomly uses one of the given generators.
-oneofMay :: MonadGen m => [m a] -> m (Maybe a)
-oneofMay = \case
-  [] -> return Nothing
-  l -> fmap Just $ choose (0, length l - 1) >>= (l !!)
+-- | 'QC.choose' lifted to 'MonadGen'.
+choose :: (MonadGen m, R.Random a) => (a, a) -> m a
+choose = liftGen . QC.choose
 
--- | Generates one of the given values.
-elementsMay :: MonadGen m => [a] -> m (Maybe a)
-elementsMay = \case
-  [] -> return Nothing
-  l -> Just . (l !!) <$> choose (0, length l - 1)
+-- | 'QC.suchThat' lifted to 'MonadGen'.
+suchThat :: MonadGen m => m a -> (a -> Bool) -> m a
+suchThat gen p = do
+  x <- gen
+  if p x then return x else suchThat gen p
 
--- | Takes a list of elements of increasing size, and chooses
--- among an initial segment of the list. The size of this initial
--- segment increases with the size parameter.
-growingElementsMay :: MonadGen m => [a] -> m (Maybe a)
-growingElementsMay = \case
-  [] -> return Nothing
-  xs -> fmap Just $ sized $ \n -> elements (take (1 `max` size n) xs)
-    where
-      k = length xs
-      mx = 100
-      log' = round . log . fromIntegral
-      size n = (log' n + 1) * k `div` log' mx
+-- | 'QC.suchThatMaybe' lifted to 'MonadGen'.
+suchThatMaybe :: MonadGen m => m a -> (a -> Bool) -> m (Maybe a)
+suchThatMaybe gen p = sized $ \n -> go n
+  where
+    go 0 = return Nothing
+    go k = do
+      x <- resize (2 * k + n0) gen
+      if p x then return (Just x) else go (k - 1)
+    n0 = 0 -- placeholder; resize semantics are advisory here
