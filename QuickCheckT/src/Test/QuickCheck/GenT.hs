@@ -18,12 +18,22 @@
 module Test.QuickCheck.GenT (
   -- * GenT transformer
   GenT (..),
-  MonadGen (..),
+  MonadGen (liftGen),
 
   -- * Running
   runGenT,
 
   -- * QuickCheck combinators lifted to GenT
+
+  -- ** Size
+  getSize,
+  resize,
+  sized,
+
+  -- ** Randomness
+  variant,
+
+  -- ** Generators
   oneof,
   choose,
   frequency,
@@ -41,30 +51,29 @@ import Control.Monad.Trans.Class (MonadTrans (..))
 import qualified System.Random as R
 import Test.QuickCheck (Gen)
 import qualified Test.QuickCheck as QC
-import qualified Test.QuickCheck.Gen as QCGen
-import qualified Test.QuickCheck.Random as QCGen
+import qualified Test.QuickCheck.Gen as QC
+import qualified Test.QuickCheck.Random as QC
 
 -- ---------------------------------------------------------------------------
 -- GenT
 
 -- | A monad transformer version of QuickCheck's 'Gen'.
-newtype GenT m a = GenT {unGenT :: QCGen.QCGen -> Int -> m a}
+newtype GenT m a = GenT {unGenT :: QC.QCGen -> Int -> m a}
   deriving (Functor)
 
 instance Applicative m => Applicative (GenT m) where
   pure a = GenT $ \_ _ -> pure a
   GenT f <*> GenT x = GenT $ \r n ->
-    let (r1, r2) = R.split r
+    let (r1, r2) = R.splitGen r
      in f r1 n <*> x r2 n
 
 instance Monad m => Monad (GenT m) where
-  return = pure
   GenT x >>= f = GenT $ \r n ->
-    let (r1, r2) = R.split r
+    let (r1, r2) = R.splitGen r
      in x r1 n >>= \a -> unGenT (f a) r2 n
 
 instance MonadFail m => MonadFail (GenT m) where
-  fail msg = GenT $ \_ _ -> fail msg
+  fail = lift . fail
 
 instance MonadTrans GenT where
   lift m = GenT $ \_ _ -> m
@@ -77,12 +86,12 @@ instance MFunctor GenT where
 
 instance MMonad GenT where
   embed f (GenT g) = GenT $ \r n ->
-    let (r1, r2) = R.split r
+    let (r1, r2) = R.splitGen r
      in unGenT (f (g r1 n)) r2 n
 
 -- | Run a 'GenT' inside a 'Gen', producing an @m a@.
 runGenT :: GenT m a -> Gen (m a)
-runGenT (GenT g) = QCGen.MkGen g
+runGenT (GenT g) = QC.MkGen g
 
 -- ---------------------------------------------------------------------------
 -- MonadGen class
@@ -90,14 +99,32 @@ runGenT (GenT g) = QCGen.MkGen g
 class Monad m => MonadGen m where
   liftGen :: Gen a -> m a
 
+  -- | 'QC.variant' lifted to 'MonadGen'.
+  variant :: Integral n => n -> m a -> m a
+
+  -- | 'QC.resize' lifted to 'MonadGen'.
+  resize :: Int -> m a -> m a
+
+  -- | 'QC.sized' lifted to 'MonadGen'.
+  sized :: (Int -> m a) -> m a
+  sized f = liftGen QC.getSize >>= f
+
 instance MonadGen Gen where
   liftGen = id
+  variant = QC.variant
+  resize = QC.resize
+  sized = QC.sized
 
 instance Monad m => MonadGen (GenT m) where
-  liftGen (QCGen.MkGen g) = GenT $ \r n -> pure (g r n)
+  liftGen (QC.MkGen g) = GenT $ \r n -> pure (g r n)
+  variant k (GenT m) = GenT $ \r n -> m (QC.integerVariant (toInteger k) $! r) n
+  resize k (GenT m) = GenT $ \r n -> m (QC.integerVariant (toInteger k) $! r) n
 
 -- ---------------------------------------------------------------------------
 -- Lifted combinators
+
+getSize :: MonadGen m => m Int
+getSize = sized pure
 
 -- | 'QC.listOf' lifted to 'MonadGen'.
 listOf :: MonadGen m => m a -> m [a]
@@ -137,14 +164,6 @@ elements [] = error "Test.QuickCheck.GenT.elements: empty list"
 elements xs = do
   i <- liftGen (QC.choose (0, length xs - 1))
   return (xs !! i)
-
--- | 'QC.sized' lifted to 'MonadGen'.
-sized :: MonadGen m => (Int -> m a) -> m a
-sized f = liftGen (QC.sized pure) >>= f
-
--- | 'QC.resize' lifted to 'MonadGen'.
-resize :: MonadGen m => Int -> m a -> m a
-resize n g = liftGen (QC.resize n (QC.sized pure)) >>= \_ -> g
 
 -- | 'QC.choose' lifted to 'MonadGen'.
 choose :: (MonadGen m, R.Random a) => (a, a) -> m a
