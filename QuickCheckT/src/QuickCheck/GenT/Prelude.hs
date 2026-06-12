@@ -1,8 +1,7 @@
-module QuickCheck.GenT.Prelude
-  ( module Exports,
-    traceM,
-  )
-where
+module QuickCheck.GenT.Prelude (
+  module Exports,
+  traceM,
+) where
 
 import Control.Applicative as Exports
 import Control.Arrow as Exports hiding (left, right)
@@ -20,7 +19,30 @@ import Data.Foldable as Exports
 import Data.IORef as Exports
 import Data.Int as Exports
 import Data.Ix as Exports
-import Data.List as Exports hiding (all, and, any, concat, concatMap, elem, find, foldl, foldl', foldl1, foldr, foldr1, mapAccumL, mapAccumR, maximum, maximumBy, minimum, minimumBy, notElem, or, product, sum)
+import Data.List as Exports hiding (
+  all,
+  and,
+  any,
+  concat,
+  concatMap,
+  elem,
+  find,
+  foldl,
+  foldl',
+  foldl1,
+  foldr,
+  foldr1,
+  mapAccumL,
+  mapAccumR,
+  maximum,
+  maximumBy,
+  minimum,
+  minimumBy,
+  notElem,
+  or,
+  product,
+  sum,
+ )
 import Data.Maybe as Exports
 import Data.Monoid as Exports
 import Data.Ord as Exports (Down (..))
@@ -42,7 +64,31 @@ import System.Mem.StableName as Exports
 import System.Timeout as Exports
 import Text.Read as Exports (readEither, readMaybe)
 import Unsafe.Coerce as Exports
-import Prelude as Exports hiding (FilePath, all, and, any, concat, concatMap, elem, foldl, foldl1, foldr, foldr1, id, mapM, mapM_, maximum, minimum, notElem, or, product, sequence, sequence_, sum, (.))
+import Prelude as Exports hiding (
+  FilePath,
+  all,
+  and,
+  any,
+  concat,
+  concatMap,
+  elem,
+  foldl,
+  foldl1,
+  foldr,
+  foldr1,
+  id,
+  mapM,
+  mapM_,
+  maximum,
+  minimum,
+  notElem,
+  or,
+  product,
+  sequence,
+  sequence_,
+  sum,
+  (.),
+ )
 
-traceM :: (Monad m) => String -> m ()
+traceM :: Monad m => String -> m ()
 traceM s = trace s $ return ()
