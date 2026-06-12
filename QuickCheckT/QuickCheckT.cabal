@@ -51,5 +51,6 @@ library
     QuickCheck >=2.7 && <3,
     base >=4.9 && <5,
     mmorph >=1.1 && <2,
+    mtl,
     random >=1.3 && <2,
     transformers >=0.5 && <2,

@@ -21,6 +21,7 @@ This package is a fork of
 [`QuickCheck-GenT`](https://github.com/nikita-volkov/QuickCheck-GenT) by
 **Nikita Volkov**, published under the MIT licence. The fork was created to:
 
+- Provide missing instances for `mtl` type classes
 - Re-home the package under the `input-output-hk` GitHub organisation.
 - Rename the module hierarchy to `Test.QuickCheck.*` to avoid conflicts when
   both packages coexist as dependencies.

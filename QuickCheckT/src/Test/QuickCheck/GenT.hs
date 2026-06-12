@@ -45,9 +45,14 @@ module Test.QuickCheck.GenT (
   vectorOf,
 ) where
 
+import Control.Monad.Cont.Class (MonadCont (..))
+import Control.Monad.Error.Class (MonadError (..))
 import Control.Monad.IO.Class (MonadIO (..))
 import Control.Monad.Morph (MFunctor (..), MMonad (..))
+import Control.Monad.Reader.Class (MonadReader (..))
+import Control.Monad.State.Class (MonadState (..))
 import Control.Monad.Trans.Class (MonadTrans (..))
+import Control.Monad.Writer.Class (MonadWriter (..))
 import qualified System.Random as R
 import Test.QuickCheck (Gen)
 import qualified Test.QuickCheck as QC
@@ -60,6 +65,10 @@ import qualified Test.QuickCheck.Random as QC
 -- | A monad transformer version of QuickCheck's 'Gen'.
 newtype GenT m a = GenT {unGenT :: QC.QCGen -> Int -> m a}
   deriving (Functor)
+
+-- | Run a 'GenT' inside a 'Gen', producing an @m a@.
+runGenT :: GenT m a -> Gen (m a)
+runGenT (GenT g) = QC.MkGen g
 
 instance Applicative m => Applicative (GenT m) where
   pure a = GenT $ \_ _ -> pure a
@@ -89,9 +98,52 @@ instance MMonad GenT where
     let (r1, r2) = R.splitGen r
      in unGenT (f (g r1 n)) r2 n
 
--- | Run a 'GenT' inside a 'Gen', producing an @m a@.
-runGenT :: GenT m a -> Gen (m a)
-runGenT (GenT g) = QC.MkGen g
+-- ---------------------------------------------------------------------------
+-- mtl instances
+--
+-- 'GenT' is reader-shaped (a function from seed and size), so every mtl
+-- effect from the underlying monad can be threaded through it: operations
+-- that merely produce an action in @m@ are simply 'lift'ed, while
+-- operations that act on a computation (such as 'local', 'listen', 'pass',
+-- and 'catchError') unwrap 'GenT', apply the effect underneath, and rewrap.
+
+-- | Reader environments pass straight through the seed/size parameters.
+instance MonadReader r m => MonadReader r (GenT m) where
+  ask = lift ask
+  reader = lift . reader
+  local f (GenT g) = GenT $ \r n -> local f (g r n)
+
+-- | State is carried entirely by the underlying monad; the generator seed
+-- is not part of the 'MonadState' state.
+instance MonadState s m => MonadState s (GenT m) where
+  get = lift get
+  put = lift . put
+  state = lift . state
+
+-- | Writer output accumulates in the underlying monad. 'listen' and 'pass'
+-- run underneath the seed/size function.
+instance MonadWriter w m => MonadWriter w (GenT m) where
+  writer = lift . writer
+  tell = lift . tell
+  listen (GenT g) = GenT $ \r n -> listen (g r n)
+  pass (GenT g) = GenT $ \r n -> pass (g r n)
+
+-- | Errors propagate from the underlying monad. The handler receives a
+-- seed split from the original, mirroring the '>>=' seed discipline, so
+-- that generation in the handler is independent of generation in the
+-- failed action.
+instance MonadError e m => MonadError e (GenT m) where
+  throwError = lift . throwError
+  catchError (GenT g) h = GenT $ \r n ->
+    let (r1, r2) = R.splitGen r
+     in catchError (g r1 n) (\e -> unGenT (h e) r2 n)
+
+-- | Continuations capture the current seed and size: the captured
+-- continuation, when invoked, resumes in the dynamic context of the
+-- invocation site (standard for reader-shaped transformers).
+instance MonadCont m => MonadCont (GenT m) where
+  callCC f = GenT $ \r n ->
+    callCC $ \c -> unGenT (f (\a -> GenT $ \_ _ -> c a)) r n
 
 -- ---------------------------------------------------------------------------
 -- MonadGen class
