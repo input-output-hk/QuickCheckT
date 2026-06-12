@@ -1,6 +1,6 @@
 cabal-version:      2.4
 name:               QuickCheckT
-version:            0.1.0.0
+version:            1.0.0.0
 synopsis:           A GenT monad transformer for QuickCheck library.
 description:
   A fork of QuickCheck-GenT (https://github.com/nikita-volkov/QuickCheck-GenT),

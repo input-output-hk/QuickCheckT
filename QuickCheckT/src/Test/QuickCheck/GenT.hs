@@ -9,7 +9,7 @@
 -- |
 -- Module      : Test.QuickCheck.GenT
 -- Description : A GenT monad transformer for QuickCheck.
--- Copyright   : (c) 2013 Nikita Volkov; (c) 2024 IOHK
+-- Copyright   : (c) 2013 Nikita Volkov; (c) 2026 IOHK
 -- License     : MIT
 --
 -- Provides 'GenT', a monad transformer that wraps QuickCheck's 'Gen' and

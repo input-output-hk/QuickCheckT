@@ -1,6 +1,6 @@
 # Changelog for `QuickCheckT`
 
-## 0.1.0.0 — 2024
+## 1.0.0.0
 
 - Forked from [`QuickCheck-GenT`](https://github.com/nikita-volkov/QuickCheck-GenT)
   (originally authored by Nikita Volkov, MIT licence).
