@@ -3,8 +3,7 @@ name: QuickCheckT
 version: 1.0.0.0
 synopsis: A GenT monad transformer for QuickCheck library.
 description:
-  A fork of QuickCheck-GenT (https://github.com/nikita-volkov/QuickCheck-GenT),
-  re-homed under input-output-hk with IOG project conventions.
+  A fork of QuickCheck-GenT (https://github.com/nikita-volkov/QuickCheck-GenT).
   Provides a GenT monad transformer that wraps QuickCheck's Gen
   and allows lifting arbitrary monadic effects into generator computations.
 

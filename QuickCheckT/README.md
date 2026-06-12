@@ -52,5 +52,5 @@ Pull requests and issues are welcome at
 
 ## Licence
 
-MIT — see [LICENSE](LICENSE).  
+MIT — see [LICENSE](LICENSE).
 Original work © 2013 Nikita Volkov; fork © 2026 IOHK.
