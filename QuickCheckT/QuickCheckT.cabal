@@ -42,7 +42,6 @@ library
   default-language: Haskell2010
 
   default-extensions:
-    NoImplicitPrelude
     NoMonomorphismRestriction
     Arrows
     BangPatterns
@@ -80,7 +79,6 @@ library
     -Wredundant-constraints
 
   exposed-modules:  Test.QuickCheck.GenT
-  other-modules:    Test.QuickCheck.GenT.Prelude
 
   build-depends:
     , base        >=4.9  && <5

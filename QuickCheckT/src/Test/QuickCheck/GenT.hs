@@ -35,13 +35,13 @@ module Test.QuickCheck.GenT (
   vectorOf,
 ) where
 
+import Control.Monad.IO.Class (MonadIO (..))
 import Control.Monad.Morph (MFunctor (..), MMonad (..))
 import Control.Monad.Trans.Class (MonadTrans (..))
 import qualified System.Random as R
 import Test.QuickCheck (Gen)
 import qualified Test.QuickCheck as QC
 import qualified Test.QuickCheck.Gen as QCGen
-import Test.QuickCheck.GenT.Prelude
 import qualified Test.QuickCheck.Random as QCGen
 
 -- ---------------------------------------------------------------------------
@@ -54,13 +54,13 @@ newtype GenT m a = GenT {unGenT :: QCGen.QCGen -> Int -> m a}
 instance Applicative m => Applicative (GenT m) where
   pure a = GenT $ \_ _ -> pure a
   GenT f <*> GenT x = GenT $ \r n ->
-    let (r1, r2) = split r
+    let (r1, r2) = R.split r
      in f r1 n <*> x r2 n
 
 instance Monad m => Monad (GenT m) where
   return = pure
   GenT x >>= f = GenT $ \r n ->
-    let (r1, r2) = split r
+    let (r1, r2) = R.split r
      in x r1 n >>= \a -> unGenT (f a) r2 n
 
 instance MonadFail m => MonadFail (GenT m) where
@@ -77,7 +77,7 @@ instance MFunctor GenT where
 
 instance MMonad GenT where
   embed f (GenT g) = GenT $ \r n ->
-    let (r1, r2) = split r
+    let (r1, r2) = R.split r
      in unGenT (f (g r1 n)) r2 n
 
 -- | Run a 'GenT' inside a 'Gen', producing an @m a@.
