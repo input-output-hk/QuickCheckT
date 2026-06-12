@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
@@ -73,12 +74,12 @@ runGenT (GenT g) = QC.MkGen g
 instance Applicative m => Applicative (GenT m) where
   pure a = GenT $ \_ _ -> pure a
   GenT f <*> GenT x = GenT $ \r n ->
-    let (r1, r2) = R.splitGen r
+    let (r1, r2) = splitQCGen r
      in f r1 n <*> x r2 n
 
 instance Monad m => Monad (GenT m) where
   GenT x >>= f = GenT $ \r n ->
-    let (r1, r2) = R.splitGen r
+    let (r1, r2) = splitQCGen r
      in x r1 n >>= \a -> unGenT (f a) r2 n
 
 instance MonadFail m => MonadFail (GenT m) where
@@ -95,7 +96,7 @@ instance MFunctor GenT where
 
 instance MMonad GenT where
   embed f (GenT g) = GenT $ \r n ->
-    let (r1, r2) = R.splitGen r
+    let (r1, r2) = splitQCGen r
      in unGenT (f (g r1 n)) r2 n
 
 -- ---------------------------------------------------------------------------
@@ -135,7 +136,7 @@ instance MonadWriter w m => MonadWriter w (GenT m) where
 instance MonadError e m => MonadError e (GenT m) where
   throwError = lift . throwError
   catchError (GenT g) h = GenT $ \r n ->
-    let (r1, r2) = R.splitGen r
+    let (r1, r2) = splitQCGen r
      in catchError (g r1 n) (\e -> unGenT (h e) r2 n)
 
 -- | Continuations capture the current seed and size: the captured
@@ -236,3 +237,10 @@ suchThatMaybe gen p = sized $ \n -> go n
       x <- resize (2 * k + n0) gen
       if p x then return (Just x) else go (k - 1)
     n0 = 0 -- placeholder; resize semantics are advisory here
+
+splitQCGen :: QC.QCGen -> (QC.QCGen, QC.QCGen)
+#if MIN_VERSION_random(1, 3, 0)
+splitQCGen = R.splitGen
+#else
+splitQCGen = R.split
+#endif
