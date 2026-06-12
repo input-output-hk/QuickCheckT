@@ -1,4 +1,9 @@
-/dist-newstyle/
+.direnv
+cabal.project.local
+.devenv
+dist-newstyle
+.vscode
+.stack-work/
+stack.yaml.lock
 /.ghc.environment.*
-/.pre-commit-config.yaml
 /result
